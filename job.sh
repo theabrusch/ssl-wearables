@@ -18,4 +18,4 @@
 module load python3/3.7.14
 source ssl-env/bin/activate
 
-python3 downstream_task_evaluation.py evaluation.num_epoch=1 data=capture24_10s data.data_root=/work3/theb/timeseries/capture24_100hz_w10_o0 is_dist=True evaluation=all
+python3 downstream_task_evaluation.py evaluation.num_epoch=1 data=capture24_10s data.data_root=/work3/theb/timeseries/capture24_100hz_w10_o0 evaluation=all

@@ -9,7 +9,7 @@ auto-save-list
 tramp
 .\#*
 runs/
-
+logs/
 
 # intermediate files
 *.log
