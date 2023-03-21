@@ -451,9 +451,9 @@ def evaluate_mlp(X_feats, y, cfg, my_device, logger, groups=None, det_Y = None):
                                                 encoder=le,
                                             )
         results.extend(result)
-        with open(f'{cfg.output_path}/prior_latents_fold_{i}.pickle', 'wb') as file:
+        with open(f'{cfg.output_path}_prior_latents_fold_{i}.pickle', 'wb') as file:
             pickle.dump(prior_latents, file)
-        with open(f'{cfg.output_path}/post_latents_fold_{i}.pickle', 'wb') as file:
+        with open(f'{cfg.output_path}_post_latents_fold_{i}.pickle', 'wb') as file:
             pickle.dump(post_latents, file)
 
 
