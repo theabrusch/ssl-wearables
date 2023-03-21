@@ -115,11 +115,11 @@ def evaluate_latent_space(model, data_loader, my_device):
 
             outputs = model.evaluate_latent_space(my_X)
 
-            latent1.append(outputs[0])
-            latent2.append(outputs[1])
-            latent3.append(outputs[2])
-            latent4.append(outputs[3])
-            latent5.append(outputs[4])
+            latent1.append(outputs[0].cpu().numpy())
+            latent2.append(outputs[1].cpu().numpy())
+            latent3.append(outputs[2].cpu().numpy())
+            latent4.append(outputs[3].cpu().numpy())
+            latent5.append(outputs[4].cpu().numpy())
             collect_y.append(true_y)
             collect_det_y.append(det_y)
 
