@@ -438,6 +438,7 @@ def evaluate_mlp(X_feats, y, cfg, my_device, logger, groups=None, det_Y = None):
     results = []
     i = 1
     for train_idxs, test_idxs in folds:
+        print('Testing fold', i, 'of', cfg.num_split)
         result, prior_latents, post_latents = train_test_mlp(
                                                 train_idxs,
                                                 test_idxs,
@@ -451,6 +452,7 @@ def evaluate_mlp(X_feats, y, cfg, my_device, logger, groups=None, det_Y = None):
                                                 encoder=le,
                                             )
         results.extend(result)
+        print('Result', result)
         with open(f'{cfg.output_path}_prior_latents_fold_{i}.pickle', 'wb') as file:
             pickle.dump(prior_latents, file)
         with open(f'{cfg.output_path}_post_latents_fold_{i}.pickle', 'wb') as file:
