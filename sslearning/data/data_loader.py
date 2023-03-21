@@ -539,6 +539,7 @@ class NormalDataset:
         self,
         X,
         y=[],
+        det_Y = [],
         pid=[],
         name="",
         isLabel=False,
@@ -557,6 +558,7 @@ class NormalDataset:
 
         self.X = torch.from_numpy(X)
         self.y = y
+        self.det_Y = det_Y
         self.isLabel = isLabel
         self.transform = transform
         self.targetTransform = target_transform
@@ -572,17 +574,19 @@ class NormalDataset:
 
         sample = self.X[idx, :]
         y = []
+        det_Y = []
         if self.isLabel:
             y = self.y[idx]
+            det_Y = self.det_Y[idx]
             if self.targetTransform:
                 y = self.targetTransform(y)
 
         if self.transform:
             sample = self.transform(sample)
         if len(self.pid) >= 1:
-            return sample, y, self.pid[idx]
+            return sample, y, self.pid[idx], det_Y
         else:
-            return sample, y
+            return sample, y, det_Y
 
 
 def generate_labels_double(X, shuffle):

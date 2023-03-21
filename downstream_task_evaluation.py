@@ -6,13 +6,14 @@ import scipy.signal as signal
 from scipy.interpolate import interp1d
 from imblearn.ensemble import BalancedRandomForestClassifier
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import GroupShuffleSplit, LeaveOneGroupOut
+from sklearn.model_selection import GroupShuffleSplit, LeaveOneGroupOut, ShuffleSplit
 from joblib import Parallel, delayed
 from tqdm.auto import tqdm
 import hydra
 from omegaconf import OmegaConf
 from torchvision import transforms
 import pathlib
+import pickle
 
 # SSL net
 from sslearning.models.accNet import cnn1, SSLNET, Resnet
@@ -39,13 +40,19 @@ is_dist=false gpu=0 model=resnet evaluation=mtl_1k_ft evaluation.task_name=aot
 """
 
 
-def train_val_split(X, Y, group, val_size=0.125):
+def train_val_split(X, Y, det_y, group, val_size=0.125):
     num_split = 1
-    folds = GroupShuffleSplit(
-        num_split, test_size=val_size, random_state=41
-    ).split(X, Y, groups=group)
-    train_idx, val_idx = next(folds)
-    return X[train_idx], X[val_idx], Y[train_idx], Y[val_idx]
+    if len(np.unique(group)) == 1:
+        folds = ShuffleSplit(
+            num_split, test_size=val_size, random_state=41
+        ).split(X, Y)
+        train_idx, val_idx = next(folds)
+    else:
+        folds = GroupShuffleSplit(
+            num_split, test_size=val_size, random_state=41
+        ).split(X, Y, groups=group)
+        train_idx, val_idx = next(folds)
+    return X[train_idx], X[val_idx], Y[train_idx], Y[val_idx], det_y[train_idx], det_y[val_idx]
 
 
 def set_bn_eval(m):
@@ -72,7 +79,7 @@ def evaluate_model(model, data_loader, my_device, loss_fn, cfg):
     model.eval()
     losses = []
     acces = []
-    for i, (my_X, my_Y) in enumerate(data_loader):
+    for i, (my_X, my_Y, _) in enumerate(data_loader):
         with torch.no_grad():
             my_X, my_Y = Variable(my_X), Variable(my_Y)
             my_X = my_X.to(my_device, dtype=torch.float)
@@ -95,6 +102,39 @@ def evaluate_model(model, data_loader, my_device, loss_fn, cfg):
     acces = np.array(acces)
     return np.mean(losses), np.mean(acces)
 
+def evaluate_latent_space(model, data_loader, my_device):
+    model.eval()
+    latent1, latent2, latent3, latent4, latent5, collect_y, collect_det_y = [], [], [], [], [], [], []
+    acces = []
+    for i, (my_X, my_Y, my_det_Y) in enumerate(data_loader):
+        with torch.no_grad():
+            my_X = Variable(my_X)
+            my_X = my_X.to(my_device, dtype=torch.float)
+            true_y = my_Y.long()
+            det_y = my_det_Y
+
+            outputs = model.evaluate_latent_space(my_X)
+
+            latent1.append(outputs[0])
+            latent2.append(outputs[1])
+            latent3.append(outputs[2])
+            latent4.append(outputs[3])
+            latent5.append(outputs[4])
+            collect_y.append(true_y)
+            collect_det_y.append(det_y)
+
+    latents = {
+        'layer 1': np.vstack(latent1),
+        'layer 2': np.vstack(latent2),
+        'layer 3': np.vstack(latent3),
+        'layer 4': np.vstack(latent4),
+        'layer 5': np.vstack(latent5),
+        'label': np.hstack(collect_y),
+        'detailed label': np.hstack(collect_det_y)
+    }
+
+    return latents
+
 
 def get_class_weights(y):
     # obtain inverse of frequency as weights for the loss function
@@ -112,9 +152,10 @@ def get_class_weights(y):
     return weights
 
 
-def setup_data(train_idxs, test_idxs, X_feats, Y, groups, cfg):
+def setup_data(train_idxs, test_idxs, X_feats, Y, det_Y, groups, cfg):
     tmp_X_train, X_test = X_feats[train_idxs], X_feats[test_idxs]
     tmp_Y_train, Y_test = Y[train_idxs], Y[test_idxs]
+    tmp_det_Y_train, det_Y_test = det_Y[train_idxs], det_Y[test_idxs]
     group_train, group_test = groups[train_idxs], groups[test_idxs]
 
     # when we are not using all the subjects
@@ -139,21 +180,25 @@ def setup_data(train_idxs, test_idxs, X_feats, Y, groups, cfg):
             tmp_Y_train[final_train_idxs],
             tmp_Y_train[final_val_idxs],
         )
+        det_Y_train, det_Y_val = (
+            tmp_det_Y_train[final_train_idxs],
+            tmp_det_Y_train[final_val_idxs]
+        )
     else:
         # We further divide up train into 70/10 train/val split
-        X_train, X_val, Y_train, Y_val = train_val_split(
-            tmp_X_train, tmp_Y_train, group_train
+        X_train, X_val, Y_train, Y_val, det_Y_train, det_Y_val = train_val_split(
+            tmp_X_train, tmp_Y_train, tmp_det_Y_train, group_train
         )
 
     my_transform = None
     if cfg.augmentation:
         my_transform = transforms.Compose([RandomSwitchAxis(), RotationAxis()])
     train_dataset = NormalDataset(
-        X_train, Y_train, name="train", isLabel=True, transform=my_transform
+        X_train, Y_train, det_Y_train, name="train", isLabel=True, transform=my_transform
     )
-    val_dataset = NormalDataset(X_val, Y_val, name="val", isLabel=True)
+    val_dataset = NormalDataset(X_val, Y_val, det_Y_val, name="val", isLabel=True)
     test_dataset = NormalDataset(
-        X_test, Y_test, pid=group_test, name="test", isLabel=True
+        X_test, Y_test, det_Y_test, pid=group_test, name="test", isLabel=True
     )
 
     train_loader = DataLoader(
@@ -212,7 +257,7 @@ def train_mlp(model, train_loader, val_loader, cfg, my_device, weights):
         model.train()
         train_losses = []
         train_acces = []
-        for i, (my_X, my_Y) in enumerate(train_loader):
+        for i, (my_X, my_Y, _) in enumerate(train_loader):
             my_X, my_Y = Variable(my_X), Variable(my_Y)
             my_X = my_X.to(my_device, dtype=torch.float)
             if cfg.data.task_type == "regress":
@@ -257,7 +302,7 @@ def mlp_predict(model, data_loader, my_device, cfg):
     true_list = []
     pid_list = []
     model.eval()
-    for i, (my_X, my_Y, my_PID) in enumerate(data_loader):
+    for i, (my_X, my_Y, my_PID,_) in enumerate(data_loader):
         with torch.no_grad():
             my_X, my_Y = Variable(my_X), Variable(my_Y)
             my_X = my_X.to(my_device, dtype=torch.float)
@@ -319,6 +364,8 @@ def get_train_test_split(cfg, X_feats, y, groups):
     # support leave one subject out and split by proportion
     if cfg.data.held_one_subject_out:
         folds = LeaveOneGroupOut().split(X_feats, y, groups=groups)
+    elif len(np.unique(groups)) == 1:
+        folds = ShuffleSplit(cfg.num_split, test_size=0.2, random_state=42).split(X_feats, y)
     else:
         # Train-test multiple times with a 80/20 random split each
         folds = GroupShuffleSplit(
@@ -332,6 +379,7 @@ def train_test_mlp(
     test_idxs,
     X_feats,
     y,
+    det_Y,
     groups,
     cfg,
     my_device,
@@ -342,18 +390,19 @@ def train_test_mlp(
     if cfg.is_verbose:
         print(model)
     train_loader, val_loader, test_loader, weights = setup_data(
-        train_idxs, test_idxs, X_feats, y, groups, cfg
+        train_idxs, test_idxs, X_feats, y, det_Y, groups, cfg
     )
+    prior_latents = evaluate_latent_space(model=model, data_loader=val_loader, my_device=my_device)
     train_mlp(model, train_loader, val_loader, cfg, my_device, weights)
 
     model = init_model(cfg, my_device)
 
-    model.load_state_dict(torch.load(cfg.model_path))
+    #model.load_state_dict(torch.load(cfg.model_path))
 
     y_test, y_test_pred, pid_test = mlp_predict(
         model, test_loader, my_device, cfg
     )
-
+    post_latents = evaluate_latent_space(model=model, data_loader=val_loader, my_device=my_device)
     # save this for every single subject
     my_pids = np.unique(pid_test)
     results = []
@@ -364,10 +413,10 @@ def train_test_mlp(
 
         result = classification_scores(subject_true, subject_pred)
         results.append(result)
-    return results
+    return results, prior_latents, post_latents
 
 
-def evaluate_mlp(X_feats, y, cfg, my_device, logger, groups=None):
+def evaluate_mlp(X_feats, y, cfg, my_device, logger, groups=None, det_Y = None):
     """Train a random forest with X_feats and Y.
     Report a variety of performance metrics based on multiple runs."""
 
@@ -387,19 +436,27 @@ def evaluate_mlp(X_feats, y, cfg, my_device, logger, groups=None):
     folds = get_train_test_split(cfg, X_feats, y, groups)
 
     results = []
+    i = 1
     for train_idxs, test_idxs in folds:
-        result = train_test_mlp(
-            train_idxs,
-            test_idxs,
-            X_feats,
-            y,
-            groups,
-            cfg,
-            my_device,
-            labels=labels,
-            encoder=le,
-        )
+        result, prior_latents, post_latents = train_test_mlp(
+                                                train_idxs,
+                                                test_idxs,
+                                                X_feats,
+                                                y,
+                                                det_Y,
+                                                groups,
+                                                cfg,
+                                                my_device,
+                                                labels=labels,
+                                                encoder=le,
+                                            )
         results.extend(result)
+        with open(f'{cfg.output_path}/prior_latents_fold_{i}.pickle', 'wb') as file:
+            pickle.dump(prior_latents, file)
+        with open(f'{cfg.output_path}/post_latents_fold_{i}.pickle', 'wb') as file:
+            pickle.dump(post_latents, file)
+
+
 
     pathlib.Path(cfg.report_root).mkdir(parents=True, exist_ok=True)
     classification_report(results, cfg.report_path)
@@ -673,6 +730,8 @@ def main(cfg):
         cfg.evaluation.evaluation_name + "_" + dt_string + ".log",
     )
     cfg.model_path = os.path.join(get_original_cwd(), dt_string + "tmp.pt")
+    cfg.output_path = os.path.join(get_original_cwd(), dt_string)
+    cfg.evaluation.flip_net_path = os.path.join(get_original_cwd(), cfg.evaluation.flip_net_path)
     fh = logging.FileHandler(log_dir)
     fh.setLevel(logging.INFO)
     logger.addHandler(fh)
@@ -692,6 +751,7 @@ def main(cfg):
     X = np.load(cfg.data.X_path)
     Y = np.load(cfg.data.Y_path)
     P = np.load(cfg.data.PID_path)  # participant IDs
+    det_Y = np.load(cfg.data.det_Y_path) # detailed label description
 
     sample_rate = cfg.data.sample_rate
     task_type = cfg.data.task_type
@@ -716,76 +776,6 @@ def main(cfg):
         Y_qnt.index = ("min", "25th", "median", "75th", "max")
         print(Y_qnt)
 
-    if cfg.evaluation.feat_hand_crafted:
-        print(
-            """\n
-        ##############################################
-                    Hand-crafted features+RF
-        ##############################################
-        """
-        )
-
-        # Extract hand-crafted features
-        print("Extracting features...")
-        X_handfeats = pd.DataFrame(
-            [handcraft_features(x, sample_rate=sample_rate) for x in tqdm(X)]
-        )
-        print("X_handfeats shape:", X_handfeats.shape)
-
-        print("Train-test RF...")
-        evaluate_feats(
-            X_handfeats, Y, cfg, logger, groups=P, task_type=task_type
-        )
-
-    if cfg.evaluation.feat_random_cnn:
-        print(
-            """\n
-        ##############################################
-                    Random CNN features+RF
-        ##############################################
-        """
-        )
-        # Extract CNN features
-        print("Extracting features...")
-        if cfg.evaluation.network == "vgg":
-            model = cnn1()
-        else:
-            # get cnn
-            model = Resnet(output_size=cfg.data.output_size, cfg=cfg)
-        model.to(my_device, dtype=torch.float)
-        input_size = cfg.evaluation.input_size
-
-        X_deepfeats = forward_by_batches(model, X, input_size, my_device)
-        print("X_deepfeats shape:", X_deepfeats.shape)
-
-        print("Train-test RF...")
-        evaluate_feats(X_deepfeats, Y, cfg, logger, groups=P)
-
-    if cfg.evaluation.flip_net:
-        print(
-            """\n
-        ##############################################
-                    Flip_net+RF
-        ##############################################
-        """
-        )
-        # Extract CNN features
-        print("Extracting features...")
-        cnn = cnn1()
-        cnn.to(my_device, dtype=torch.float)
-        load_weights(cfg.evaluation.flip_net_path, cnn, my_device)
-        input_size = cfg.evaluation.input_size
-
-        X_deepfeats = forward_by_batches(cnn, X, input_size, my_device)
-        print("X_deepfeats shape:", X_deepfeats.shape)
-
-        print("Train-test RF...")
-        evaluate_feats(X_deepfeats, Y, cfg, logger, groups=P)
-
-    """
-    Start of MLP classifier evaluation
-    """
-
     if cfg.evaluation.flip_net_ft:
         print(
             """\n
@@ -796,6 +786,11 @@ def main(cfg):
         )
         # Original X shape: (1861541, 1000, 3) for capture24
         print("Original X shape:", X.shape)
+        if my_device == "cpu":
+            X = X[:200]
+            Y = Y[:200]
+            P = P[:200]
+            det_Y = det_Y[:200]
 
         input_size = cfg.evaluation.input_size
         if X.shape[1] == input_size:
@@ -811,7 +806,7 @@ def main(cfg):
         print("X transformed shape:", X_downsampled.shape)
 
         print("Train-test Flip_net+MLP...")
-        evaluate_mlp(X_downsampled, Y, cfg, my_device, logger, groups=P)
+        evaluate_mlp(X_downsampled, Y, cfg, my_device, logger, groups=P, det_Y = det_Y)
 
 
 if __name__ == "__main__":
