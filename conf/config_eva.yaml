@@ -12,7 +12,7 @@ num_split: 5
 augmentation: true
 model_path: /data/UKBB/tmp_mdl/
 logging_path: /data/UKBB/SSL/evaluations
-report_root: "/home/cxx579/ssw/reports/"
+report_root: "/zhome/89/a/117273/Desktop/ssl-wearables/reports/"
 output_path: "/work3/theb/timeseries/capture24outputs/"
 # report_path: "${report_root}${data.dataset_name}_${evaluation.evaluation_name}_${data.subject_count}.csv"
 report_path: "${report_root}${data.dataset_name}_${evaluation.evaluation_name}_${data.subject_count}_${evaluation.subR}.csv"
