@@ -53,6 +53,8 @@ flycheck_*.el
 # directory configuration
 .dir-locals.el
 
+ssl-env/*
+
 __pycache__
 raw
 processed
