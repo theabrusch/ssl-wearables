@@ -732,7 +732,7 @@ def main(cfg):
         cfg.evaluation.evaluation_name + "_" + dt_string + ".log",
     )
     cfg.model_path = os.path.join(get_original_cwd(), dt_string + "tmp.pt")
-    cfg.output_path = os.path.join(get_original_cwd(), dt_string)
+    cfg.output_path = os.path.join(cfg.output_path, dt_string)
     cfg.evaluation.flip_net_path = os.path.join(get_original_cwd(), cfg.evaluation.flip_net_path)
     fh = logging.FileHandler(log_dir)
     fh.setLevel(logging.INFO)
