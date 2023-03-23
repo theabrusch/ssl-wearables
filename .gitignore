@@ -9,7 +9,7 @@ auto-save-list
 tramp
 .\#*
 runs/
-
+*.npy
 
 # intermediate files
 *.log
