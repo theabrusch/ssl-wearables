@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
-DEVICE_HZ = 100  # Hz
+DEVICE_HZ = 30  # Hz
 WINDOW_SEC = 10  # seconds
 # WINDOW_OVERLAP_SEC = 5  # seconds
 WINDOW_OVERLAP_SEC = 0  # seconds
@@ -13,10 +13,10 @@ WINDOW_LEN = int(DEVICE_HZ * WINDOW_SEC)  # device ticks
 WINDOW_OVERLAP_LEN = int(DEVICE_HZ * WINDOW_OVERLAP_SEC)  # device ticks
 WINDOW_STEP_LEN = WINDOW_LEN - WINDOW_OVERLAP_LEN  # device ticks
 WINDOW_TOL = 0.01  # 1%
-DATAFILES = 'capture24/data/P*.csv.gz'
-ANNOLABELFILE = 'capture24/data/annotation-label-dictionary.csv'
+DATAFILES = '/Users/theb/Desktop/data/capture24/P*.csv.gz'
+ANNOLABELFILE = '/Users/theb/Desktop/data/capture24/annotation-label-dictionary.csv'
 # OUTDIR = 'capture24_100hz_w10_o5/'
-OUTDIR = 'capture24_100hz_w10_o0/'
+OUTDIR = 'capture24_30hz_full/'
 # LABEL = 'label:Willetts2018'
 LABEL = 'label:Walmsley2020'
 
@@ -44,7 +44,7 @@ def is_good_quality(w):
 
 annolabel = pd.read_csv(ANNOLABELFILE, index_col='annotation')
 
-X, Y, T, P, = [], [], [], []
+X, Y, T, P, orig_Y = [], [], [], [], []
 
 for datafile in tqdm(glob.glob(DATAFILES)):
     data = pd.read_csv(datafile, parse_dates=['time'], index_col='time',
@@ -61,20 +61,24 @@ for datafile in tqdm(glob.glob(DATAFILES)):
         t = w.index[0].to_datetime64()
         x = w[['x', 'y', 'z']].values
         y = annolabel.loc[w['annotation'][0], LABEL]
+        orig_y = w['annotation'][0]
 
         X.append(x)
         Y.append(y)
+        orig_Y.append(orig_y)
         T.append(t)
         P.append(p)
 
 X = np.asarray(X)
 Y = np.asarray(Y)
+orig_Y = np.asarray(orig_Y)
 T = np.asarray(T)
 P = np.asarray(P)
 
 os.system(f'mkdir -p {OUTDIR}')
 np.save(os.path.join(OUTDIR, 'X'), X)
 np.save(os.path.join(OUTDIR, 'Y'), Y)
+np.save(os.path.join(OUTDIR, 'detailed_Y'), orig_Y)
 np.save(os.path.join(OUTDIR, 'time'), T)
 np.save(os.path.join(OUTDIR, 'pid'), P)
 
