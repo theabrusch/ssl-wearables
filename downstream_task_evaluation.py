@@ -281,7 +281,7 @@ def mlp_predict(model, data_loader, my_device, cfg):
     predictions_list = torch.cat(predictions_list)
     latent_dict = dict()
     for i in range(5):
-        latent_dict[f'latent{i}'] = torch.cat(latents[i], dim = 0)
+        latent_dict[f'latent{i}'] = torch.cat(latents[i], dim = 0).numpy()
     return (
         torch.flatten(true_list).numpy(),
         torch.flatten(predictions_list).numpy(),
@@ -358,15 +358,11 @@ def train_test_mlp(
     y_test, y_test_pred, pid_test, pre_latents = mlp_predict(
         model, test_loader, my_device, cfg
     )
-    results_collect = dict()
-    results_collect['y_test'] = y_test
-    results_collect['y_test_pred'] = y_test_pred
-    results_collect['pid_test'] = pid_test
-    results_collect['latents'] = pre_latents
-
-    outpath = f'{cfg.output_path}pre_latents.pickle'
-    with open(outpath, 'wb') as file:
-        pickle.dump(results_collect, file)
+    pretraining = dict()
+    pretraining['y_test'] = y_test
+    pretraining['y_test_pred'] = y_test_pred
+    pretraining['pid_test'] = pid_test
+    pretraining['latents'] = pre_latents
 
     train_mlp(model, train_loader, val_loader, cfg, my_device, weights)
 
@@ -377,15 +373,12 @@ def train_test_mlp(
     y_test, y_test_pred, pid_test, post_latents = mlp_predict(
         model, test_loader, my_device, cfg
     )
-    results_collect = dict()
-    results_collect['y_test'] = y_test
-    results_collect['y_test_pred'] = y_test_pred
-    results_collect['pid_test'] = pid_test
-    results_collect['latents'] = post_latents
+    posttraining = dict()
+    posttraining['y_test'] = y_test
+    posttraining['y_test_pred'] = y_test_pred
+    posttraining['pid_test'] = pid_test
+    posttraining['latents'] = post_latents
 
-    outpath = f'{cfg.output_path}post_latents.pickle'
-    with open(outpath, 'wb') as file:
-        pickle.dump(results_collect, file)
     # save this for every single subject
     my_pids = np.unique(pid_test)
     results = []
@@ -396,7 +389,15 @@ def train_test_mlp(
 
         result = classification_scores(subject_true, subject_pred)
         results.append(result)
-    return results
+    return results, pretraining, posttraining
+
+def save_outputs(outputs, output_path):
+    for key, val in outputs.items():
+        if not isinstance(val, dict):
+            np.save(f'{output_path}{key}.npy', val)
+        else:
+            for subkey, subval in val.items():
+                np.save(f'{output_path}{subkey}.npy', subval)
 
 
 def evaluate_mlp(X_feats, y, cfg, my_device, logger, groups=None, det_y=None):
@@ -419,21 +420,25 @@ def evaluate_mlp(X_feats, y, cfg, my_device, logger, groups=None, det_y=None):
     folds = get_train_test_split(cfg, X_feats, y, groups)
 
     results = []
+    i = 0
     for train_idxs, test_idxs in folds:
-        result = train_test_mlp(
-            train_idxs,
-            test_idxs,
-            X_feats,
-            y,
-            groups,
-            cfg,
-            my_device,
-            det_y = det_y,
-            labels=labels,
-            encoder=le,
-        )
+        result, pre_latents, post_latents = train_test_mlp(
+                                                train_idxs,
+                                                test_idxs,
+                                                X_feats,
+                                                y,
+                                                groups,
+                                                cfg,
+                                                my_device,
+                                                det_y = det_y,
+                                                labels=labels,
+                                                encoder=le,
+                                            )
         results.extend(result)
-
+        fold_path = f'{cfg.output_path}fold{i}'
+        pathlib.Path(fold_path).mkdir(parents=True, exist_ok=True)
+        save_outputs(pre_latents, f'{fold_path}/pre_')
+        save_outputs(post_latents, f'{fold_path}/post_')
     pathlib.Path(cfg.report_root).mkdir(parents=True, exist_ok=True)
     classification_report(results, cfg.report_path)
 
