@@ -13,7 +13,6 @@ runs/
 logs/*
 ssl-env/*
 reports/*
-
 # intermediate files
 *.log
 *.pt
