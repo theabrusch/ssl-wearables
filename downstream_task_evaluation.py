@@ -831,8 +831,7 @@ def main(cfg):
         # Original X shape: (1861541, 1000, 3) for capture24
         print("Original X shape:", X.shape)
 
-        test_mode = True
-        if test_mode:
+        if cfg.test_mode:
             idx = np.random.choice(np.arange(len(X)), size = 200)
             X = X[idx]
             Y = Y[idx]

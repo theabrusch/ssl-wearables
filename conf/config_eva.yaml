@@ -10,6 +10,7 @@ gpu_ids: [0, 1, 2]  # gpus to use if multi_gpu==true
 multi_gpu: false
 num_split: 5
 augmentation: true
+test_mode: true
 model_path: /Users/theb/Documents/PhD/code/ssl-wearables/model_check_point/mtl_best.mdl
 logging_path: /data/UKBB/SSL/evaluations
 output_path: '/Users/theb/Documents/PhD/code/ssl-wearables/outputs/'
