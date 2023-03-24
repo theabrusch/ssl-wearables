@@ -1,7 +1,8 @@
-data_root: /Users/theb/Desktop/data/capture24_30hz_full
+data_root: /Users/theb/Desktop/data/capture24_100hz_w10_o0
 X_path: "${data.data_root}/X.npy"
 Y_path:  "${data.data_root}/Y.npy"
 PID_path:  "${data.data_root}/pid.npy"
+det_Y_path: "${data.data_root}/detailed_Y.npy"
 sample_rate: 100
 task_type: 'classify'
 

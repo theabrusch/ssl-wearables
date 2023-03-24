@@ -9,6 +9,7 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import GroupShuffleSplit, LeaveOneGroupOut
 from joblib import Parallel, delayed
 from tqdm.auto import tqdm
+import pickle
 import hydra
 from omegaconf import OmegaConf
 from torchvision import transforms
@@ -112,9 +113,10 @@ def get_class_weights(y):
     return weights
 
 
-def setup_data(train_idxs, test_idxs, X_feats, Y, groups, cfg):
+def setup_data(train_idxs, test_idxs, X_feats, Y, groups, cfg, det_y):
     tmp_X_train, X_test = X_feats[train_idxs], X_feats[test_idxs]
     tmp_Y_train, Y_test = Y[train_idxs], Y[test_idxs]
+    det_Y_train, det_Y_test = det_y[train_idxs], det_y[test_idxs]
     group_train, group_test = groups[train_idxs], groups[test_idxs]
 
     # when we are not using all the subjects
@@ -153,7 +155,7 @@ def setup_data(train_idxs, test_idxs, X_feats, Y, groups, cfg):
     )
     val_dataset = NormalDataset(X_val, Y_val, name="val", isLabel=True)
     test_dataset = NormalDataset(
-        X_test, Y_test, pid=group_test, name="test", isLabel=True
+        X_test, Y_test, pid=group_test, det_Y=det_Y_test, name="test", isLabel=True
     )
 
     train_loader = DataLoader(
@@ -251,33 +253,40 @@ def train_mlp(model, train_loader, val_loader, cfg, my_device, weights):
             break
     return model
 
-
 def mlp_predict(model, data_loader, my_device, cfg):
     predictions_list = []
     true_list = []
     pid_list = []
+    latents = [[], [], [], [], []]
     model.eval()
-    for i, (my_X, my_Y, my_PID) in enumerate(data_loader):
+    for i, (my_X, my_Y, my_PID, det_Y) in enumerate(data_loader):
         with torch.no_grad():
             my_X, my_Y = Variable(my_X), Variable(my_Y)
             my_X = my_X.to(my_device, dtype=torch.float)
             if cfg.data.task_type == "regress":
                 true_y = my_Y.to(my_device, dtype=torch.float)
-                pred_y = model(my_X)
+                feats, pred_y = model.evaluate_latent_space(my_X)
             else:
                 true_y = my_Y.to(my_device, dtype=torch.long)
-                logits = model(my_X)
+                feats, logits = model.evaluate_latent_space(my_X)
                 pred_y = torch.argmax(logits, dim=1)
 
             true_list.append(true_y.cpu())
             predictions_list.append(pred_y.cpu())
             pid_list.extend(my_PID)
+            for i in range(5):
+                latents[i].append(feats[i].detach().cpu())
+
     true_list = torch.cat(true_list)
     predictions_list = torch.cat(predictions_list)
+    latent_dict = dict()
+    for i in range(5):
+        latent_dict[f'latent{i}'] = torch.cat(latents[i], dim = 0)
     return (
         torch.flatten(true_list).numpy(),
         torch.flatten(predictions_list).numpy(),
         np.array(pid_list),
+        latent_dict
     )
 
 
@@ -337,23 +346,46 @@ def train_test_mlp(
     my_device,
     labels=None,
     encoder=None,
+    det_y = None,
+
 ):
     model = setup_model(cfg, my_device)
     if cfg.is_verbose:
         print(model)
     train_loader, val_loader, test_loader, weights = setup_data(
-        train_idxs, test_idxs, X_feats, y, groups, cfg
+        train_idxs, test_idxs, X_feats, y, groups, cfg, det_y = det_y
     )
+    y_test, y_test_pred, pid_test, pre_latents = mlp_predict(
+        model, test_loader, my_device, cfg
+    )
+    results_collect = dict()
+    results_collect['y_test'] = y_test
+    results_collect['y_test_pred'] = y_test_pred
+    results_collect['pid_test'] = pid_test
+    results_collect['latents'] = pre_latents
+
+    outpath = f'{cfg.output_path}pre_latents.pickle'
+    with open(outpath, 'wb') as file:
+        pickle.dump(results_collect, file)
+
     train_mlp(model, train_loader, val_loader, cfg, my_device, weights)
 
     model = init_model(cfg, my_device)
 
     model.load_state_dict(torch.load(cfg.model_path))
 
-    y_test, y_test_pred, pid_test = mlp_predict(
+    y_test, y_test_pred, pid_test, post_latents = mlp_predict(
         model, test_loader, my_device, cfg
     )
+    results_collect = dict()
+    results_collect['y_test'] = y_test
+    results_collect['y_test_pred'] = y_test_pred
+    results_collect['pid_test'] = pid_test
+    results_collect['latents'] = post_latents
 
+    outpath = f'{cfg.output_path}post_latents.pickle'
+    with open(outpath, 'wb') as file:
+        pickle.dump(results_collect, file)
     # save this for every single subject
     my_pids = np.unique(pid_test)
     results = []
@@ -367,7 +399,7 @@ def train_test_mlp(
     return results
 
 
-def evaluate_mlp(X_feats, y, cfg, my_device, logger, groups=None):
+def evaluate_mlp(X_feats, y, cfg, my_device, logger, groups=None, det_y=None):
     """Train a random forest with X_feats and Y.
     Report a variety of performance metrics based on multiple runs."""
 
@@ -396,6 +428,7 @@ def evaluate_mlp(X_feats, y, cfg, my_device, logger, groups=None):
             groups,
             cfg,
             my_device,
+            det_y = det_y,
             labels=labels,
             encoder=le,
         )
@@ -692,6 +725,7 @@ def main(cfg):
     X = np.load(cfg.data.X_path)
     Y = np.load(cfg.data.Y_path)
     P = np.load(cfg.data.PID_path)  # participant IDs
+    det_Y = np.load(cfg.data.det_Y_path)
 
     sample_rate = cfg.data.sample_rate
     task_type = cfg.data.task_type
@@ -797,6 +831,14 @@ def main(cfg):
         # Original X shape: (1861541, 1000, 3) for capture24
         print("Original X shape:", X.shape)
 
+        test_mode = True
+        if test_mode:
+            idx = np.random.choice(np.arange(len(X)), size = 200)
+            X = X[idx]
+            Y = Y[idx]
+            P = P[idx]
+            det_Y = det_Y[idx]
+
         input_size = cfg.evaluation.input_size
         if X.shape[1] == input_size:
             print("No need to downsample")
@@ -811,7 +853,7 @@ def main(cfg):
         print("X transformed shape:", X_downsampled.shape)
 
         print("Train-test Flip_net+MLP...")
-        evaluate_mlp(X_downsampled, Y, cfg, my_device, logger, groups=P)
+        evaluate_mlp(X_downsampled, Y, cfg, my_device, logger, groups=P, det_y = det_Y)
 
 
 if __name__ == "__main__":

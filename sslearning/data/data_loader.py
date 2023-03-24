@@ -540,6 +540,7 @@ class NormalDataset:
         X,
         y=[],
         pid=[],
+        det_Y =[],
         name="",
         isLabel=False,
         transform=None,
@@ -557,6 +558,7 @@ class NormalDataset:
 
         self.X = torch.from_numpy(X)
         self.y = y
+        self.det_y = det_Y
         self.isLabel = isLabel
         self.transform = transform
         self.targetTransform = target_transform
@@ -580,7 +582,7 @@ class NormalDataset:
         if self.transform:
             sample = self.transform(sample)
         if len(self.pid) >= 1:
-            return sample, y, self.pid[idx]
+            return sample, y, self.pid[idx], self.det_y[idx]
         else:
             return sample, y
 

@@ -832,6 +832,15 @@ class Resnet(nn.Module):
             return y
         return y
 
+    def evaluate_latent_space(self, x):
+        latents = []
+        feats = x
+        for layer in self.feature_extractor:
+            feats = layer(feats)
+            latents.append(feats)
+        y = self.classifier(feats.view(x.shape[0], -1))
+        return latents, y
+
 
 def weight_init(self, mode="fan_out", nonlinearity="relu"):
 
