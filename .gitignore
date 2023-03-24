@@ -10,6 +10,9 @@ tramp
 .\#*
 runs/
 *.npy
+logs/*
+ssl-env/*
+reports/*
 
 # intermediate files
 *.log

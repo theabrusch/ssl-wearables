@@ -12,8 +12,8 @@ num_split: 5
 augmentation: true
 model_path: /Users/theb/Documents/PhD/code/ssl-wearables/model_check_point/mtl_best.mdl
 logging_path: /data/UKBB/SSL/evaluations
-report_root: "/home/cxx579/ssw/reports/"
 output_path: '/Users/theb/Documents/PhD/code/ssl-wearables/outputs/'
+report_root: "/zhome/89/a/117273/Desktop/ssl-wearables/reports/"
 # report_path: "${report_root}${data.dataset_name}_${evaluation.evaluation_name}_${data.subject_count}.csv"
 report_path: "${report_root}${data.dataset_name}_${evaluation.evaluation_name}_${data.subject_count}_${evaluation.subR}.csv"
 is_verbose: false
