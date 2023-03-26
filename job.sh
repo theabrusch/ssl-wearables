@@ -18,6 +18,6 @@
 module load python3/3.7.14
 source ssl-env/bin/activate
 
-python3 downstream_task_evaluation.py evaluation.num_epoch=200 data=capture24_10s data.data_root=/work3/theb/timeseries/capture24_100hz_w10_o0 evaluation=all output_path=/zhome/89/a/117273/Desktop/ssl-wearables/outputs/ num_split=5 evaluation.flip_net_path="/zhome/89/a/117273/Desktop/ssl-wearables/model_check_point/mtl_best.mdl" gpu=-1 is_verbose=True evaluation.learning_rate=1e-4 test_mode=False
+python3 downstream_task_evaluation.py evaluation.num_epoch=200 data=capture24_10s data.data_root=/work3/theb/timeseries/capture24_100hz_w10_o0 data.batch_size=1000 evaluation=all output_path=/work3/theb/outputs/ssl-wearables/ num_split=5 evaluation.flip_net_path="/zhome/89/a/117273/Desktop/ssl-wearables/model_check_point/mtl_best.mdl" gpu=0 is_verbose=True evaluation.learning_rate=1e-4 test_mode=False
 
 
