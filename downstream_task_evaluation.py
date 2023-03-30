@@ -256,10 +256,11 @@ def train_mlp(model, train_loader, val_loader, cfg, my_device, weights):
 def mlp_predict(model, data_loader, my_device, cfg):
     predictions_list = []
     true_list = []
+    det_list = []
     pid_list = []
-    latents = [[], [], [], [], []]
+    latents = [[], [], [], [], [], []]
     model.eval()
-    for i, (my_X, my_Y, my_PID, det_Y) in enumerate(data_loader):
+    for i, (my_X, my_Y, my_PID, det_Y_0, det_Y_1, det_Y_2) in enumerate(data_loader):
         with torch.no_grad():
             my_X, my_Y = Variable(my_X), Variable(my_Y)
             my_X = my_X.to(my_device, dtype=torch.float)
@@ -270,21 +271,23 @@ def mlp_predict(model, data_loader, my_device, cfg):
                 true_y = my_Y.to(my_device, dtype=torch.long)
                 feats, logits = model.evaluate_latent_space(my_X)
                 pred_y = torch.argmax(logits, dim=1)
-
+            det_list.append(np.concatenate([np.expand_dims(det_Y_0, 1), np.expand_dims(det_Y_1,1), np.expand_dims(det_Y_2,1)], axis = 1))
             true_list.append(true_y.cpu())
             predictions_list.append(pred_y.cpu())
             pid_list.extend(my_PID)
-            for i in range(5):
+            for i in range(len(feats)):
                 latents[i].append(feats[i].detach().cpu())
 
     true_list = torch.cat(true_list)
+    det_list = np.concatenate(det_list)
     predictions_list = torch.cat(predictions_list)
     latent_dict = dict()
-    for i in range(5):
+    for i in range(len(latents)):
         latent_dict[f'latent{i}'] = torch.cat(latents[i], dim = 0).numpy()
     return (
         torch.flatten(true_list).numpy(),
         torch.flatten(predictions_list).numpy(),
+        det_list,
         np.array(pid_list),
         latent_dict
     )
@@ -355,11 +358,12 @@ def train_test_mlp(
     train_loader, val_loader, test_loader, weights = setup_data(
         train_idxs, test_idxs, X_feats, y, groups, cfg, det_y = det_y
     )
-    y_test, y_test_pred, pid_test, pre_latents = mlp_predict(
+    y_test, y_test_pred, det_y, pid_test, pre_latents = mlp_predict(
         model, test_loader, my_device, cfg
     )
     pretraining = dict()
     pretraining['y_test'] = y_test
+    pretraining['det_y'] = det_y
     pretraining['y_test_pred'] = y_test_pred
     pretraining['pid_test'] = pid_test
     pretraining['latents'] = pre_latents
@@ -370,11 +374,12 @@ def train_test_mlp(
 
     model.load_state_dict(torch.load(cfg.model_path))
 
-    y_test, y_test_pred, pid_test, post_latents = mlp_predict(
+    y_test, y_test_pred, det_y, pid_test, post_latents = mlp_predict(
         model, test_loader, my_device, cfg
     )
     posttraining = dict()
     posttraining['y_test'] = y_test
+    posttraining['det_y'] = det_y
     posttraining['y_test_pred'] = y_test_pred
     posttraining['pid_test'] = pid_test
     posttraining['latents'] = post_latents
@@ -731,7 +736,7 @@ def main(cfg):
     X = np.load(cfg.data.X_path)
     Y = np.load(cfg.data.Y_path)
     P = np.load(cfg.data.PID_path)  # participant IDs
-    det_Y = np.load(cfg.data.det_Y_path)
+    det_Y = np.load(cfg.data.det_Y_path, allow_pickle=True)
 
     sample_rate = cfg.data.sample_rate
     task_type = cfg.data.task_type

@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
-DEVICE_HZ = 30  # Hz
+DEVICE_HZ = 100  # Hz
 WINDOW_SEC = 10  # seconds
 # WINDOW_OVERLAP_SEC = 5  # seconds
 WINDOW_OVERLAP_SEC = 0  # seconds
@@ -19,6 +19,7 @@ ANNOLABELFILE = '/Users/theb/Desktop/data/capture24/annotation-label-dictionary.
 OUTDIR = 'capture24_30hz_full/'
 # LABEL = 'label:Willetts2018'
 LABEL = 'label:Walmsley2020'
+detailed_LABELS = ['label:WillettsSpecific2018', 'label:WillettsMET2018', 'label:DohertySpecific2018']
 
 
 def is_good_quality(w):
@@ -61,7 +62,7 @@ for datafile in tqdm(glob.glob(DATAFILES)):
         t = w.index[0].to_datetime64()
         x = w[['x', 'y', 'z']].values
         y = annolabel.loc[w['annotation'][0], LABEL]
-        orig_y = w['annotation'][0]
+        orig_y = annolabel[detailed_LABELS].loc[w['annotation'][0]].values
 
         X.append(x)
         Y.append(y)

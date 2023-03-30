@@ -582,7 +582,7 @@ class NormalDataset:
         if self.transform:
             sample = self.transform(sample)
         if len(self.pid) >= 1:
-            return sample, y, self.pid[idx], self.det_y[idx]
+            return sample, y, self.pid[idx], self.det_y[idx][0], self.det_y[idx][1], self.det_y[idx][2]
         else:
             return sample, y
 
