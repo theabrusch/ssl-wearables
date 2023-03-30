@@ -1,4 +1,4 @@
-data_root: /Users/theb/Desktop/data/capture24_100hz_w10_o0
+data_root: /Users/theb/Documents/PhD/code/ssl-wearables/capture24_30hz_full
 X_path: "${data.data_root}/X.npy"
 Y_path:  "${data.data_root}/Y.npy"
 PID_path:  "${data.data_root}/pid.npy"

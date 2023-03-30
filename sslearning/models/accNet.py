@@ -25,11 +25,16 @@ class EvaClassifier(nn.Module):
         self.linear1 = torch.nn.Linear(input_size, nn_size)
         self.linear2 = torch.nn.Linear(nn_size, output_size)
 
-    def forward(self, x):
+    def forward(self, x, return_latent = False):
         x = self.linear1(x)
         x = F.relu(x)
+        if return_latent:
+            latent = x
         x = self.linear2(x)
-        return x
+        if return_latent:
+            return x, latent
+        else:
+            return x
 
 
 class AccNet(nn.Module):
@@ -838,7 +843,8 @@ class Resnet(nn.Module):
         for layer in self.feature_extractor:
             feats = layer(feats)
             latents.append(feats)
-        y = self.classifier(feats.view(x.shape[0], -1))
+        y, feats = self.classifier(feats.view(x.shape[0], -1), return_latent = True)
+        latents.append(feats)
         return latents, y
 
 
