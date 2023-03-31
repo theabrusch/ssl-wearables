@@ -416,6 +416,10 @@ def evaluate_mlp(X_feats, y, cfg, my_device, logger, groups=None, det_y=None):
         labels = np.unique(y)
         le.fit(y)
         y = le.transform(y)
+        temp_det_y = []
+        for i in range(det_y.shape[1]):
+            temp_det_y.append(le.fit_transform(det_y[:,i]))
+        det_y = np.array(temp_det_y).T
     else:
         y = y * 1.0
 

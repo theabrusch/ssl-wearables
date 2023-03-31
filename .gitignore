@@ -17,6 +17,7 @@ reports/*
 *.log
 *.pt
 *.mdl
+*.png
 
 # Org-mode
 .org-id-locations
