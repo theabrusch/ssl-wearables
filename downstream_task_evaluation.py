@@ -431,6 +431,8 @@ def evaluate_mlp(X_feats, y, cfg, my_device, logger, groups=None, det_y=None):
     results = []
     i = 0
     for train_idxs, test_idxs in folds:
+        if i > 0:
+            break
         result, pre_latents, post_latents = train_test_mlp(
                                                 train_idxs,
                                                 test_idxs,
@@ -448,6 +450,7 @@ def evaluate_mlp(X_feats, y, cfg, my_device, logger, groups=None, det_y=None):
         pathlib.Path(fold_path).mkdir(parents=True, exist_ok=True)
         save_outputs(pre_latents, f'{fold_path}/pre_')
         save_outputs(post_latents, f'{fold_path}/post_')
+
         i+=1
     pathlib.Path(cfg.report_root).mkdir(parents=True, exist_ok=True)
     classification_report(results, cfg.report_path)
