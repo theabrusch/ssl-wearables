@@ -258,6 +258,7 @@ def mlp_predict(model, data_loader, my_device, cfg):
     true_list = []
     det_list = []
     pid_list = []
+    input_list = []
     latents = [[], [], [], [], [], []]
     model.eval()
     for i, (my_X, my_Y, my_PID, det_Y_0, det_Y_1, det_Y_2) in enumerate(data_loader):
@@ -277,6 +278,7 @@ def mlp_predict(model, data_loader, my_device, cfg):
             pid_list.extend(my_PID)
             for i in range(len(feats)):
                 latents[i].append(feats[i].detach().cpu())
+            input_list.append(my_X.detach().cpu())
 
     true_list = torch.cat(true_list)
     det_list = np.concatenate(det_list)
@@ -284,12 +286,14 @@ def mlp_predict(model, data_loader, my_device, cfg):
     latent_dict = dict()
     for i in range(len(latents)):
         latent_dict[f'latent{i}'] = torch.cat(latents[i], dim = 0).numpy()
+    input_list = torch.cat(input_list, dim = 0).numpy()
     return (
         torch.flatten(true_list).numpy(),
         torch.flatten(predictions_list).numpy(),
         det_list,
         np.array(pid_list),
-        latent_dict
+        latent_dict,
+        input_list,
     )
 
 
@@ -358,7 +362,7 @@ def train_test_mlp(
     train_loader, val_loader, test_loader, weights = setup_data(
         train_idxs, test_idxs, X_feats, y, groups, cfg, det_y = det_y
     )
-    y_test, y_test_pred, det_y, pid_test, pre_latents = mlp_predict(
+    y_test, y_test_pred, det_y, pid_test, pre_latents, input_list = mlp_predict(
         model, test_loader, my_device, cfg
     )
     pretraining = dict()
@@ -367,6 +371,7 @@ def train_test_mlp(
     pretraining['y_test_pred'] = y_test_pred
     pretraining['pid_test'] = pid_test
     pretraining['latents'] = pre_latents
+    pretraining['inputs'] = input_list
 
     train_mlp(model, train_loader, val_loader, cfg, my_device, weights)
 
@@ -374,7 +379,7 @@ def train_test_mlp(
 
     model.load_state_dict(torch.load(cfg.model_path))
 
-    y_test, y_test_pred, det_y, pid_test, post_latents = mlp_predict(
+    y_test, y_test_pred, det_y, pid_test, post_latents, input_list = mlp_predict(
         model, test_loader, my_device, cfg
     )
     posttraining = dict()
@@ -383,6 +388,7 @@ def train_test_mlp(
     posttraining['y_test_pred'] = y_test_pred
     posttraining['pid_test'] = pid_test
     posttraining['latents'] = post_latents
+    posttraining['inputs'] = input_list
 
     # save this for every single subject
     my_pids = np.unique(pid_test)
@@ -431,8 +437,6 @@ def evaluate_mlp(X_feats, y, cfg, my_device, logger, groups=None, det_y=None):
     results = []
     i = 0
     for train_idxs, test_idxs in folds:
-        if i > 0:
-            break
         result, pre_latents, post_latents = train_test_mlp(
                                                 train_idxs,
                                                 test_idxs,
@@ -450,7 +454,7 @@ def evaluate_mlp(X_feats, y, cfg, my_device, logger, groups=None, det_y=None):
         pathlib.Path(fold_path).mkdir(parents=True, exist_ok=True)
         save_outputs(pre_latents, f'{fold_path}/pre_')
         save_outputs(post_latents, f'{fold_path}/post_')
-
+        break
         i+=1
     pathlib.Path(cfg.report_root).mkdir(parents=True, exist_ok=True)
     classification_report(results, cfg.report_path)
