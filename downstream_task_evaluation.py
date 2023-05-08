@@ -388,8 +388,11 @@ def train_test_mlp(
         model.load_state_dict(torch.load(cfg.model_path))
     else:
         model = init_model(cfg, my_device)
-        model.load_state_dict(torch.load(cfg.ft_model_path), map_location=torch.device(my_device))
-
+        if my_device == 'cpu':
+            model.load_state_dict(torch.load(cfg.ft_model_path), map_location=torch.device(my_device))
+        else:
+            model.load_state_dict(torch.load(cfg.ft_model_path))
+            
     y_test, y_test_pred, det_y, pid_test, post_latents, input_list = mlp_predict(
         model, test_loader, my_device, cfg
     )
