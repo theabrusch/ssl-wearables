@@ -5,6 +5,9 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
+len(['bicycling', 'gym', 'sitstand+activity', 'sitstand+lowactivity',
+       'sitting', 'sleep', 'sports', 'standing', 'vehicle', 'walking',
+       'walking+activity'])
 DEVICE_HZ = 100  # Hz
 WINDOW_SEC = 10  # seconds
 # WINDOW_OVERLAP_SEC = 5  # seconds

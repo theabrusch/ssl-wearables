@@ -3,7 +3,7 @@ import os
 import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
-from .utils import resize
+from utils import resize
 
 DEVICE_HZ = 20  # Hz
 WINDOW_SEC = 10  # seconds
@@ -14,8 +14,8 @@ WINDOW_STEP_LEN = WINDOW_LEN - WINDOW_OVERLAP_LEN  # device ticks
 WINDOW_TOL = 0.01  # 1%
 TARGET_HZ = 30  # Hz
 TARGET_WINDOW_LEN = int(TARGET_HZ * WINDOW_SEC)
-DATAFILES = "/Users/catong/repos/video-imu/data/"
-DATAFILES = DATAFILES + "wisdm/wisdm-dataset/raw/watch/accel/*.txt"
+DATAFILES = "/Users/theb/Desktop/human-activity-data"
+DATAFILES = DATAFILES + "/wisdm-dataset/raw/watch/accel/*.txt"
 OUTDIR = "wisdm_30hz_w10/"
 
 
@@ -97,11 +97,11 @@ for datafile in tqdm(glob.glob(DATAFILES)):
 
     for code, data in code_to_df.items():
         try:
-            data = data.resample(f"{period}N", origin="start").nearest(limit=1)
+            data = data.resample(f"{period}N").nearest(limit=1)
         except ValueError:
             if pid == 1629:
                 data = data.drop_duplicates()
-                data = data.resample(f"{period}N", origin="start").nearest(
+                data = data.resample(f"{period}N").nearest(
                     limit=1
                 )
                 pass

@@ -559,6 +559,8 @@ class NormalDataset:
         self.X = torch.from_numpy(X)
         self.y = y
         self.det_y = det_Y
+        if self.det_y is None:
+            self.det_y = torch.zeros((len(self.X),3))
         self.isLabel = isLabel
         self.transform = transform
         self.targetTransform = target_transform

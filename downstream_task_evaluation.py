@@ -1,15 +1,9 @@
 import os
 import numpy as np
 import pandas as pd
-import scipy.stats as stats
-import scipy.signal as signal
 from scipy.interpolate import interp1d
-from imblearn.ensemble import BalancedRandomForestClassifier
-from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import GroupShuffleSplit, LeaveOneGroupOut
-from joblib import Parallel, delayed
 from tqdm.auto import tqdm
-import pickle
 import hydra
 from omegaconf import OmegaConf
 from torchvision import transforms
@@ -111,6 +105,17 @@ def get_class_weights(y):
     print("Weight tensor: ")
     print(weights)
     return weights
+
+def get_data_loader(X_feats, Y, groups, cfg, det_y):
+    dataset = NormalDataset(
+        X_feats, Y, pid=groups, det_Y=det_y, name="test", isLabel=True
+    )
+    test_loader = DataLoader(
+        dataset,
+        batch_size=cfg.data.batch_size,
+        num_workers=cfg.evaluation.num_workers,
+    )
+    return test_loader
 
 
 def setup_data(train_idxs, test_idxs, X_feats, Y, groups, cfg, det_y):
@@ -359,9 +364,13 @@ def train_test_mlp(
     model = setup_model(cfg, my_device)
     if cfg.is_verbose:
         print(model)
-    train_loader, val_loader, test_loader, weights = setup_data(
-        train_idxs, test_idxs, X_feats, y, groups, cfg, det_y = det_y
-    )
+    if not cfg.evaluate_all_data:
+        train_loader, val_loader, test_loader, weights = setup_data(
+            train_idxs, test_idxs, X_feats, y, groups, cfg, det_y = det_y
+        )
+    else:
+        test_loader = get_data_loader(X_feats, y, groups, cfg, det_y = det_y)
+
     y_test, y_test_pred, det_y, pid_test, pre_latents, input_list = mlp_predict(
         model, test_loader, my_device, cfg
     )
@@ -373,11 +382,13 @@ def train_test_mlp(
     pretraining['latents'] = pre_latents
     pretraining['inputs'] = input_list
 
-    train_mlp(model, train_loader, val_loader, cfg, my_device, weights)
-
-    model = init_model(cfg, my_device)
-
-    model.load_state_dict(torch.load(cfg.model_path))
+    if cfg.train_model:
+        train_mlp(model, train_loader, val_loader, cfg, my_device, weights)
+        model = init_model(cfg, my_device)
+        model.load_state_dict(torch.load(cfg.model_path))
+    else:
+        model = init_model(cfg, my_device)
+        model.load_state_dict(torch.load(cfg.ft_model_path), map_location=torch.device(my_device))
 
     y_test, y_test_pred, det_y, pid_test, post_latents, input_list = mlp_predict(
         model, test_loader, my_device, cfg
@@ -410,6 +421,24 @@ def save_outputs(outputs, output_path):
             for subkey, subval in val.items():
                 np.save(f'{output_path}{subkey}.npy', subval)
 
+def test_mlp(X_feats, y, groups, cfg, my_device, det_y = None):
+    model = setup_model(cfg, my_device)
+    if cfg.is_verbose:
+        print(model)
+    test_loader = get_data_loader(X_feats, y, groups, cfg, det_y = det_y)
+
+    y_test, y_test_pred, det_y, pid_test, pre_latents, input_list = mlp_predict(
+        model, test_loader, my_device, cfg
+    )
+    pretraining = dict()
+    pretraining['y_test'] = y_test
+    pretraining['det_y'] = det_y
+    pretraining['y_test_pred'] = y_test_pred
+    pretraining['pid_test'] = pid_test
+    pretraining['latents'] = pre_latents
+    pretraining['inputs'] = input_list
+
+    return None
 
 def evaluate_mlp(X_feats, y, cfg, my_device, logger, groups=None, det_y=None):
     """Train a random forest with X_feats and Y.
@@ -450,192 +479,13 @@ def evaluate_mlp(X_feats, y, cfg, my_device, logger, groups=None, det_y=None):
                                                 encoder=le,
                                             )
         results.extend(result)
-        fold_path = f'{cfg.output_path}fold{i}'
+        fold_path = f'{cfg.output_path}{cfg.data.dataset_name}/fold{i}'
         pathlib.Path(fold_path).mkdir(parents=True, exist_ok=True)
         save_outputs(pre_latents, f'{fold_path}/pre_')
         save_outputs(post_latents, f'{fold_path}/post_')
         break
-        i+=1
     pathlib.Path(cfg.report_root).mkdir(parents=True, exist_ok=True)
     classification_report(results, cfg.report_path)
-
-
-def train_test_rf(
-    train_idxs, test_idxs, X_feats, Y, cfg, groups, task_type="classify"
-):
-    X_train, X_test = X_feats[train_idxs], X_feats[test_idxs]
-    Y_train, Y_test = Y[train_idxs], Y[test_idxs]
-    group_train, group_test = groups[train_idxs], groups[test_idxs]
-
-    # when we are not using all the subjects
-    if cfg.data.subject_count != -1:
-        X_train, Y_train, group_train = get_data_with_subject_count(
-            cfg.data.subject_count, X_train, Y_train, group_train
-        )
-    if task_type == "classify":
-        model = BalancedRandomForestClassifier(
-            n_estimators=3000,
-            replacement=True,
-            sampling_strategy="not minority",
-            n_jobs=1,
-            random_state=42,
-        )
-    elif task_type == "regress":
-        model = RandomForestRegressor(
-            n_estimators=200,  # more is too expensive
-            n_jobs=1,
-            random_state=42,
-            max_features=0.333,
-        )
-
-    model.fit(X_train, Y_train)
-    Y_test_pred = model.predict(X_test)
-
-    results = []
-    for current_pid in np.unique(group_test):
-        subject_filter = group_test == current_pid
-        subject_true = Y_test[subject_filter]
-        subject_pred = Y_test_pred[subject_filter]
-
-        result = classification_scores(subject_true, subject_pred)
-        results.append(result)
-
-    return results
-
-
-def evaluate_feats(X_feats, Y, cfg, logger, groups=None, task_type="classify"):
-    """Train a random forest with X_feats and Y.
-    Report a variety of performance metrics based on multiple runs."""
-
-    if isinstance(X_feats, pd.DataFrame):
-        X_feats = X_feats.to_numpy()
-
-    # Train-test multiple times with a 80/20 random split each
-    # Five-fold or Held one subject out
-    folds = get_train_test_split(cfg, X_feats, Y, groups)
-    print("loading done")
-    results = Parallel(n_jobs=1)(
-        delayed(train_test_rf)(
-            train_idxs, test_idxs, X_feats, Y, cfg, groups, task_type
-        )
-        for train_idxs, test_idxs in folds
-    )
-    results = np.array(results)
-
-    results = np.array(
-        [
-            fold_result
-            for fold_results in results
-            for fold_result in fold_results
-        ]
-    )
-
-    print(results)
-    pathlib.Path(cfg.report_root).mkdir(parents=True, exist_ok=True)
-    classification_report(results, cfg.report_path)
-
-
-def handcraft_features(xyz, sample_rate):
-    """Our baseline handcrafted features. xyz is a window of shape (N,3)"""
-
-    feats = {}
-    feats["xMean"], feats["yMean"], feats["zMean"] = np.mean(xyz, axis=0)
-    feats["xStd"], feats["yStd"], feats["zStd"] = np.std(xyz, axis=0)
-    feats["xRange"], feats["yRange"], feats["zRange"] = np.ptp(xyz, axis=0)
-
-    x, y, z = xyz.T
-
-    with np.errstate(
-        divide="ignore", invalid="ignore"
-    ):  # ignore div by 0 warnings
-        feats["xyCorr"] = np.nan_to_num(np.corrcoef(x, y)[0, 1])
-        feats["yzCorr"] = np.nan_to_num(np.corrcoef(y, z)[0, 1])
-        feats["zxCorr"] = np.nan_to_num(np.corrcoef(z, x)[0, 1])
-
-    m = np.linalg.norm(xyz, axis=1)
-
-    feats["mean"] = np.mean(m)
-    feats["std"] = np.std(m)
-    feats["range"] = np.ptp(m)
-    feats["mad"] = stats.median_abs_deviation(m)
-    feats["kurt"] = stats.kurtosis(m)
-    feats["skew"] = stats.skew(m)
-    feats["enmomean"] = np.mean(np.abs(m - 1))
-
-    # Spectrum using Welch's method with 3s segment length
-    # First run without detrending to get the true spectrum
-    freqs, powers = signal.welch(
-        m,
-        fs=sample_rate,
-        nperseg=3 * sample_rate,
-        noverlap=2 * sample_rate,
-        detrend=False,
-        average="median",
-    )
-
-    with np.errstate(
-        divide="ignore", invalid="ignore"
-    ):  # ignore div by 0 warnings
-        feats["pentropy"] = np.nan_to_num(stats.entropy(powers + 1e-16))
-
-    # Spectrum using Welch's method with 3s segment length
-    # Now do detrend to find dominant freqs
-    freqs, powers = signal.welch(
-        m,
-        fs=sample_rate,
-        nperseg=3 * sample_rate,
-        noverlap=2 * sample_rate,
-        detrend="constant",
-        average="median",
-    )
-
-    peaks, _ = signal.find_peaks(powers)
-    peak_powers = powers[peaks]
-    peak_freqs = freqs[peaks]
-    peak_ranks = np.argsort(peak_powers)[::-1]
-    if len(peaks) >= 2:
-        feats["f1"] = peak_freqs[peak_ranks[0]]
-        feats["f2"] = peak_freqs[peak_ranks[1]]
-    elif len(peaks) == 1:
-        feats["f1"] = feats["f2"] = peak_freqs[peak_ranks[0]]
-    else:
-        feats["f1"] = feats["f2"] = 0
-
-    return feats
-
-
-def forward_by_batches(cnn, X, cnn_input_size, my_device="cpu"):
-    """Forward pass model on a dataset. Includes resizing to model input size.
-    Do this by batches so that we don't blow up the memory.
-    """
-
-    BATCH_SIZE = 1024
-
-    X_feats = []
-    cnn.eval()
-    with torch.no_grad():
-        for i in tqdm(range(0, len(X), BATCH_SIZE)):
-            batch_end = i + BATCH_SIZE
-            X_batch = X[i:batch_end]
-
-            # Resize to expected input length
-            X_batch = resize(X_batch, length=cnn_input_size)
-            X_batch = X_batch.astype("f4")  # PyTorch defaults to float32
-            X_batch = np.transpose(
-                X_batch, (0, 2, 1)
-            )  # channels first: (N,M,3) -> (N,3,M) channel first format
-            X_batch = torch.from_numpy(X_batch)
-            X_batch = X_batch.to(my_device, dtype=torch.float)
-
-            if my_device == "cpu":
-                X_feats.append(cnn(X_batch).numpy())
-            else:
-                X_feats.append(cnn(X_batch).cpu().numpy())
-
-    X_feats = np.concatenate(X_feats)
-
-    return X_feats
-
 
 def resize(X, length, axis=1):
     """Resize the temporal length using linear interpolation.
@@ -747,7 +597,10 @@ def main(cfg):
     X = np.load(cfg.data.X_path)
     Y = np.load(cfg.data.Y_path)
     P = np.load(cfg.data.PID_path)  # participant IDs
-    det_Y = np.load(cfg.data.det_Y_path, allow_pickle=True)
+    if cfg.data.dataset_name == 'capture24':
+        det_Y = np.load(cfg.data.det_Y_path, allow_pickle=True)
+    else:
+        det_Y = np.zeros((len(Y), 3))
 
     sample_rate = cfg.data.sample_rate
     task_type = cfg.data.task_type
@@ -772,109 +625,38 @@ def main(cfg):
         Y_qnt.index = ("min", "25th", "median", "75th", "max")
         print(Y_qnt)
 
-    if cfg.evaluation.feat_hand_crafted:
-        print(
-            """\n
-        ##############################################
-                    Hand-crafted features+RF
-        ##############################################
-        """
-        )
-
-        # Extract hand-crafted features
-        print("Extracting features...")
-        X_handfeats = pd.DataFrame(
-            [handcraft_features(x, sample_rate=sample_rate) for x in tqdm(X)]
-        )
-        print("X_handfeats shape:", X_handfeats.shape)
-
-        print("Train-test RF...")
-        evaluate_feats(
-            X_handfeats, Y, cfg, logger, groups=P, task_type=task_type
-        )
-
-    if cfg.evaluation.feat_random_cnn:
-        print(
-            """\n
-        ##############################################
-                    Random CNN features+RF
-        ##############################################
-        """
-        )
-        # Extract CNN features
-        print("Extracting features...")
-        if cfg.evaluation.network == "vgg":
-            model = cnn1()
-        else:
-            # get cnn
-            model = Resnet(output_size=cfg.data.output_size, cfg=cfg)
-        model.to(my_device, dtype=torch.float)
-        input_size = cfg.evaluation.input_size
-
-        X_deepfeats = forward_by_batches(model, X, input_size, my_device)
-        print("X_deepfeats shape:", X_deepfeats.shape)
-
-        print("Train-test RF...")
-        evaluate_feats(X_deepfeats, Y, cfg, logger, groups=P)
-
-    if cfg.evaluation.flip_net:
-        print(
-            """\n
-        ##############################################
-                    Flip_net+RF
-        ##############################################
-        """
-        )
-        # Extract CNN features
-        print("Extracting features...")
-        cnn = cnn1()
-        cnn.to(my_device, dtype=torch.float)
-        load_weights(cfg.evaluation.flip_net_path, cnn, my_device)
-        input_size = cfg.evaluation.input_size
-
-        X_deepfeats = forward_by_batches(cnn, X, input_size, my_device)
-        print("X_deepfeats shape:", X_deepfeats.shape)
-
-        print("Train-test RF...")
-        evaluate_feats(X_deepfeats, Y, cfg, logger, groups=P)
-
+    print(
+        """\n
+    ##############################################
+                Flip_net+MLP
+    ##############################################
     """
-    Start of MLP classifier evaluation
-    """
+    )
+    # Original X shape: (1861541, 1000, 3) for capture24
+    print("Original X shape:", X.shape)
 
-    if cfg.evaluation.flip_net_ft:
-        print(
-            """\n
-        ##############################################
-                    Flip_net+MLP
-        ##############################################
-        """
-        )
-        # Original X shape: (1861541, 1000, 3) for capture24
-        print("Original X shape:", X.shape)
+    if cfg.test_mode:
+        idx = np.random.choice(np.arange(len(X)), size = 200)
+        X = X[idx]
+        Y = Y[idx]
+        P = P[idx]
+        det_Y = det_Y[idx]
 
-        if cfg.test_mode:
-            idx = np.random.choice(np.arange(len(X)), size = 200)
-            X = X[idx]
-            Y = Y[idx]
-            P = P[idx]
-            det_Y = det_Y[idx]
+    input_size = cfg.evaluation.input_size
+    if X.shape[1] == input_size:
+        print("No need to downsample")
+        X_downsampled = X
+    else:
+        X_downsampled = resize(X, input_size)
+    X_downsampled = X_downsampled.astype(
+        "f4"
+    )  # PyTorch defaults to float32
+    # channels first: (N,M,3) -> (N,3,M). PyTorch uses channel first format
+    X_downsampled = np.transpose(X_downsampled, (0, 2, 1))
+    print("X transformed shape:", X_downsampled.shape)
 
-        input_size = cfg.evaluation.input_size
-        if X.shape[1] == input_size:
-            print("No need to downsample")
-            X_downsampled = X
-        else:
-            X_downsampled = resize(X, input_size)
-        X_downsampled = X_downsampled.astype(
-            "f4"
-        )  # PyTorch defaults to float32
-        # channels first: (N,M,3) -> (N,3,M). PyTorch uses channel first format
-        X_downsampled = np.transpose(X_downsampled, (0, 2, 1))
-        print("X transformed shape:", X_downsampled.shape)
-
-        print("Train-test Flip_net+MLP...")
-        evaluate_mlp(X_downsampled, Y, cfg, my_device, logger, groups=P, det_y = det_Y)
+    print("Train-test Flip_net+MLP...")
+    evaluate_mlp(X_downsampled, Y, cfg, my_device, logger, groups=P, det_y = det_Y)
 
 
 if __name__ == "__main__":
