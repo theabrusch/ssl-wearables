@@ -371,16 +371,16 @@ def train_test_mlp(
     else:
         test_loader = get_data_loader(X_feats, y, groups, cfg, det_y = det_y)
 
-    y_test, y_test_pred, det_y, pid_test, pre_latents, input_list = mlp_predict(
-        model, test_loader, my_device, cfg
-    )
-    pretraining = dict()
-    pretraining['y_test'] = y_test
-    pretraining['det_y'] = det_y
-    pretraining['y_test_pred'] = y_test_pred
-    pretraining['pid_test'] = pid_test
-    pretraining['latents'] = pre_latents
-    pretraining['inputs'] = input_list
+    #y_test, y_test_pred, det_y, pid_test, pre_latents, input_list = mlp_predict(
+    #    model, test_loader, my_device, cfg
+    #)
+    #pretraining = dict()
+    #pretraining['y_test'] = y_test
+    #pretraining['det_y'] = det_y
+    #pretraining['y_test_pred'] = y_test_pred
+    #pretraining['pid_test'] = pid_test
+    #pretraining['latents'] = pre_latents
+    #pretraining['inputs'] = input_list
 
     if cfg.train_model:
         train_mlp(model, train_loader, val_loader, cfg, my_device, weights)
@@ -414,7 +414,7 @@ def train_test_mlp(
 
         result = classification_scores(subject_true, subject_pred)
         results.append(result)
-    return results, pretraining, posttraining
+    return results, posttraining
 
 def save_outputs(outputs, output_path):
     for key, val in outputs.items():
@@ -469,7 +469,7 @@ def evaluate_mlp(X_feats, y, cfg, my_device, logger, groups=None, det_y=None):
     results = []
     i = 0
     for train_idxs, test_idxs in folds:
-        result, pre_latents, post_latents = train_test_mlp(
+        result, post_latents = train_test_mlp(
                                                 train_idxs,
                                                 test_idxs,
                                                 X_feats,
@@ -484,8 +484,7 @@ def evaluate_mlp(X_feats, y, cfg, my_device, logger, groups=None, det_y=None):
         results.extend(result)
         fold_path = f'{cfg.output_path}{cfg.data.dataset_name}/fold{i}'
         pathlib.Path(fold_path).mkdir(parents=True, exist_ok=True)
-        save_outputs(pre_latents, f'{fold_path}/pre_')
-        save_outputs(post_latents, f'{fold_path}/post_')
+        save_outputs(post_latents, f'{fold_path}/{cfg.prefix}_')
         break
     pathlib.Path(cfg.report_root).mkdir(parents=True, exist_ok=True)
     classification_report(results, cfg.report_path)
