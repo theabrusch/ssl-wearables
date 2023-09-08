@@ -13,6 +13,7 @@ augmentation: true
 evaluate_all_data: true
 train_model: false
 test_mode: true
+prefix: pre # prefix for model name
 model_path: /Users/theb/Documents/PhD/code/ssl-wearables/model_check_point/mtl_best.mdl
 ft_model_path: /Users/theb/Documents/PhD/code/ssl-wearables/ft_models/04-05-2023_16:46:14tmp.pt
 logging_path: /data/UKBB/SSL/evaluations
