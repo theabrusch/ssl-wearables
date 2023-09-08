@@ -737,7 +737,7 @@ class Resnet(nn.Module):
 
         # Classifier input size = last out_channels in previous layer
         if is_eva:
-            self.classifier = EvaClassifier(
+            self.classifier = Classifier(
                 input_size=out_channels, output_size=output_size
             )
         elif is_mtl:
@@ -843,8 +843,7 @@ class Resnet(nn.Module):
         for layer in self.feature_extractor:
             feats = layer(feats)
             latents.append(feats)
-        y, feats = self.classifier(feats.view(x.shape[0], -1), return_latent = True)
-        latents.append(feats)
+        y = self.classifier(feats.view(x.shape[0], -1))
         return latents, y
 
 
