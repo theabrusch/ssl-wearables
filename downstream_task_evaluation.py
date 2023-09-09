@@ -264,7 +264,7 @@ def mlp_predict(model, data_loader, my_device, cfg):
     det_list = []
     pid_list = []
     input_list = []
-    latents = [[], [], [], [], [], []]
+    latents = [[], [], [], [], []]
     model.eval()
     for i, (my_X, my_Y, my_PID, det_Y_0, det_Y_1, det_Y_2) in enumerate(data_loader):
         with torch.no_grad():
