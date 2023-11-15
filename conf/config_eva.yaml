@@ -13,6 +13,7 @@ augmentation: false
 evaluate_all_data: false
 train_model: true
 mixup: false
+alpha: 0.5
 test_mode: true
 prefix: pre # prefix for model name
 model_path: /Users/theb/Documents/PhD/code/ssl-wearables/model_check_point/mtl_best.mdl

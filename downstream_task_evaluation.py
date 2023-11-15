@@ -232,7 +232,7 @@ def train_mlp(model, train_loader, val_loader, cfg, my_device, weights, alpha = 
                 loss = loss_fn(logits, true_y)
             else:
                 logits, mixup_logits, mixup_labels = model(my_X, true_y)
-                loss = loss_fn(logits, true_y) + alpha*loss_fn(mixup_logits, mixup_labels)
+                loss = (1-alpha)*loss_fn(logits, true_y) + alpha*loss_fn(mixup_logits, mixup_labels)
             loss.backward()
             optimizer.step()
 
@@ -387,7 +387,7 @@ def train_test_mlp(
     #pretraining['inputs'] = input_list
 
     if cfg.train_model:
-        train_mlp(model, train_loader, val_loader, cfg, my_device, weights, mixup = cfg.mixup)
+        train_mlp(model, train_loader, val_loader, cfg, my_device, weights, mixup = cfg.mixup, alpha = cfg.alpha)
         model = init_model(cfg, my_device)
         model.load_state_dict(torch.load(cfg.model_path))
     else:
