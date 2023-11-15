@@ -38,17 +38,20 @@ def classification_scores(Y_test, Y_test_pred):
         Y_test, Y_test_pred, average="macro", zero_division=0
     )
 
-    return cohen_kappa, precision, recall, f1
+    acc = metrics.accuracy_score(Y_test, Y_test_pred)
+
+    return cohen_kappa, precision, recall, f1, acc
 
 
 def save_report(
-    precision_list, recall_list, f1_list, cohen_kappa_list, report_path
+    precision_list, recall_list, f1_list, cohen_kappa_list, acc_list, report_path
 ):
     data = {
         "precision": precision_list,
         "recall": recall_list,
         "f1": f1_list,
         "kappa": cohen_kappa_list,
+        "acc": acc_list,
     }
 
     df = pd.DataFrame(data)
@@ -62,9 +65,10 @@ def classification_report(results, report_path):
     precision_list = [result[1] for result in results]
     recall_list = [result[2] for result in results]
     f1_list = [result[3] for result in results]
+    acc_list = [result[4] for result in results]
 
     save_report(
-        precision_list, recall_list, f1_list, cohen_kappa_list, report_path
+        precision_list, recall_list, f1_list, cohen_kappa_list, acc_list, report_path
     )
 
 
