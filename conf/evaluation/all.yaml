@@ -10,7 +10,7 @@ flip_net: false
 flip_net_ft: true
 flip_net_random_mlp: false
 load_weights: true
-freeze_weight: false
+freeze_weight: true
 flip_net_path: "/Users/theb/Documents/PhD/code/ssl-wearables/model_check_point/mtl_best.mdl"
 ft_flip_net_path: "/Users/theb/Documents/PhD/code/ssl-wearables/model_check_point/mtl_best.mdl"
 input_size: 300  # input size after resampling the raw data

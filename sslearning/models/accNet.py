@@ -823,8 +823,52 @@ class Resnet(nn.Module):
 
         return nn.Sequential(*modules)
 
-    def forward(self, x):
-        feats = self.feature_extractor(x)
+    def forward(self, x, labels = None):
+        if labels is not None:
+            # sample one layer in which to do mixup and pairs of same labels
+            with torch.no_grad():
+                # sample one layer
+                layer_idx = np.random.randint(0, len(self.feature_extractor))
+                # get unique labels and counts
+                unique_labels, counts = torch.unique(labels, return_counts=True)
+                idx_1 = []
+                idx_2 = []
+                for i in range(len(x)):
+                    lab = labels[i]
+                    if counts[unique_labels == lab] > 1:
+                        # get the indices of the current label
+                        idxs = torch.where(labels == lab)[0]
+                        # drop the current index
+                        idxs = idxs[idxs != i]
+                        # sample one index
+                        idx = idxs[torch.randperm(len(idxs))][0]
+                        idx_1.append(i)
+                        idx_2.append(idx)
+                # sample mixup coefficient
+                mixup = torch.rand(len(idx_1), device = x.device)
+                mixup_labels = labels[idx_1]
+            # get features
+            feats = x
+            i = 0
+            while i <= layer_idx:
+                feats = self.feature_extractor[i](feats)
+                i += 1
+            # mixup
+            mixup_feats = feats[idx_1] * mixup.view(-1, 1, 1) + feats[idx_2] * (1 - mixup.view(-1, 1, 1))
+            # get the rest of the features
+            while i < len(self.feature_extractor):
+                feats = self.feature_extractor[i](feats)
+                mixup_feats = self.feature_extractor[i](mixup_feats)
+                i += 1
+            # get predicted labels
+            y = self.classifier(feats.view(x.shape[0], -1))
+            mixup_y = self.classifier(mixup_feats.view(x.shape[0], -1))
+            return y, mixup_y, mixup_labels
+            
+                        
+
+        else:
+            feats = self.feature_extractor(x)
 
         if self.is_mtl:
             aot_y = self.aot_h(feats.view(x.shape[0], -1))
@@ -835,7 +879,6 @@ class Resnet(nn.Module):
         else:
             y = self.classifier(feats.view(x.shape[0], -1))
             return y
-        return y
 
     def evaluate_latent_space(self, x):
         latents = []

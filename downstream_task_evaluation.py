@@ -198,7 +198,7 @@ class RMSELoss(nn.Module):
         return self.mse(yhat, y)
 
 
-def train_mlp(model, train_loader, val_loader, cfg, my_device, weights):
+def train_mlp(model, train_loader, val_loader, cfg, my_device, weights, alpha = 0.5, mixup = False):
     optimizer = optim.Adam(
         model.parameters(), lr=cfg.evaluation.learning_rate, amsgrad=True
     )
@@ -227,8 +227,12 @@ def train_mlp(model, train_loader, val_loader, cfg, my_device, weights):
             else:
                 true_y = my_Y.to(my_device, dtype=torch.long)
 
-            logits = model(my_X)
-            loss = loss_fn(logits, true_y)
+            if not mixup:
+                logits = model(my_X)
+                loss = loss_fn(logits, true_y)
+            else:
+                logits, mixup_logits, mixup_labels = model(my_X, true_y)
+                loss = loss_fn(logits, true_y) + alpha*loss_fn(mixup_logits, mixup_labels)
             loss.backward()
             optimizer.step()
 
@@ -383,7 +387,7 @@ def train_test_mlp(
     #pretraining['inputs'] = input_list
 
     if cfg.train_model:
-        train_mlp(model, train_loader, val_loader, cfg, my_device, weights)
+        train_mlp(model, train_loader, val_loader, cfg, my_device, weights, mixup = True)
         model = init_model(cfg, my_device)
         model.load_state_dict(torch.load(cfg.model_path))
     else:
