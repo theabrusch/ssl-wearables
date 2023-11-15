@@ -6,7 +6,7 @@ from sklearn.model_selection import GroupShuffleSplit, LeaveOneGroupOut
 from tqdm.auto import tqdm
 import hydra
 from omegaconf import OmegaConf
-from torchvision import transforms
+#from torchvision import transforms
 import pathlib
 
 # SSL net
