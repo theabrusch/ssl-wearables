@@ -38,7 +38,7 @@ def classification_scores(Y_test, Y_test_pred):
         Y_test, Y_test_pred, average="macro", zero_division=0
     )
 
-    acc = metrics.accuracy_score(Y_test, Y_test_pred)
+    acc = metrics.balanced_accuracy_score(Y_test, Y_test_pred)
 
     return cohen_kappa, precision, recall, f1, acc
 
