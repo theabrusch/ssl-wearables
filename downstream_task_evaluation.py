@@ -387,7 +387,7 @@ def train_test_mlp(
     #pretraining['inputs'] = input_list
 
     if cfg.train_model:
-        train_mlp(model, train_loader, val_loader, cfg, my_device, weights, mixup = True)
+        train_mlp(model, train_loader, val_loader, cfg, my_device, weights, mixup = cfg.mixup)
         model = init_model(cfg, my_device)
         model.load_state_dict(torch.load(cfg.model_path))
     else:
