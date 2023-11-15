@@ -488,7 +488,8 @@ def evaluate_mlp(X_feats, y, cfg, my_device, logger, groups=None, det_y=None):
         results.extend(result)
         fold_path = f'{cfg.output_path}{cfg.data.dataset_name}/fold{i}'
         pathlib.Path(fold_path).mkdir(parents=True, exist_ok=True)
-        save_outputs(post_latents, f'{fold_path}/{cfg.prefix}_')
+        if cfg.save_outputs:
+            save_outputs(post_latents, f'{fold_path}/{cfg.prefix}_')
         break
     pathlib.Path(cfg.report_root).mkdir(parents=True, exist_ok=True)
     classification_report(results, cfg.report_path)
