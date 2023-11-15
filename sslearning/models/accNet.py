@@ -831,22 +831,23 @@ class Resnet(nn.Module):
                 layer_idx = np.random.randint(0, len(self.feature_extractor))
                 # get unique labels and counts
                 unique_labels, counts = torch.unique(labels, return_counts=True)
-                idx_1 = []
-                idx_2 = []
-                for i in range(len(x)):
-                    lab = labels[i]
+                n_mixup = torch.sum(counts[counts > 1])
+                idx_1 = torch.zeros(n_mixup, dtype = torch.int64)
+                idx_2 = torch.zeros(n_mixup, dtype = torch.int64)
+                counter = 0
+                for lab in unique_labels:
                     if counts[unique_labels == lab] > 1:
-                        # get the indices of the current label
                         idxs = torch.where(labels == lab)[0]
-                        # drop the current index
-                        idxs = idxs[idxs != i]
-                        # sample one index
-                        idx = idxs[torch.randperm(len(idxs))][0]
-                        idx_1.append(i)
-                        idx_2.append(idx)
-                # sample mixup coefficient
+                        new_idxs = torch.zeros_like(idxs)
+                        new_idxs[1:] = idxs[:-1]
+                        new_idxs[0] = idxs[-1]
+                        idx_1[counter : counter + len(idxs)] = idxs
+                        idx_2[counter : counter + len(idxs)] = new_idxs
+                        counter += len(idxs)
+
                 mixup = torch.rand(len(idx_1), device = x.device)
                 mixup_labels = labels[idx_1]
+
             # get features
             feats = x
             i = 0
