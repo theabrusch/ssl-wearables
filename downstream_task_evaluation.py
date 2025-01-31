@@ -12,6 +12,7 @@ import pathlib
 # SSL net
 from sslearning.models.accNet import cnn1, SSLNET, Resnet
 from sslearning.scores import classification_scores, classification_report
+from sklearn.metrics import balanced_accuracy_score
 import copy
 from sklearn import preprocessing
 from sslearning.data.data_loader import NormalDataset
@@ -400,6 +401,13 @@ def train_test_mlp(
     y_test, y_test_pred, det_y, pid_test, post_latents, input_list = mlp_predict(
         model, test_loader, my_device, cfg
     )
+    print('Test bal acc:', balanced_accuracy_score(y_test, y_test_pred))
+
+    y_val, y_val_pred, det_y_val, _, _, _ = mlp_predict(
+        model, val_loader, my_device, cfg
+    )
+    print('Val bal acc:', balanced_accuracy_score(y_val, y_val_pred))
+
     posttraining = dict()
     posttraining['y_test'] = y_test
     posttraining['det_y'] = det_y
