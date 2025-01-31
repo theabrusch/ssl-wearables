@@ -271,7 +271,15 @@ def mlp_predict(model, data_loader, my_device, cfg):
     input_list = []
     latents = [[], [], [], [], []]
     model.eval()
-    for i, (my_X, my_Y, my_PID, det_Y_0, det_Y_1, det_Y_2) in enumerate(data_loader):
+    for i, batch in enumerate(data_loader):
+        if len(batch) == 2:
+            my_X, my_Y = batch
+            my_PID = np.zeros(len(my_Y))
+            det_Y_0 = np.zeros(len(my_Y))
+            det_Y_1 = np.zeros(len(my_Y))
+            det_Y_2 = np.zeros(len(my_Y))
+        else:
+            my_X, my_Y, my_PID, det_Y_0, det_Y_1, det_Y_2 = batch
         with torch.no_grad():
             my_X, my_Y = Variable(my_X), Variable(my_Y)
             my_X = my_X.to(my_device, dtype=torch.float)
