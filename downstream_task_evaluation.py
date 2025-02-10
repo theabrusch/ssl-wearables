@@ -199,7 +199,7 @@ class RMSELoss(nn.Module):
         return self.mse(yhat, y)
 
 
-def train_mlp(model, train_loader, val_loader, cfg, my_device, weights, alpha = 0.5, mixup = False):
+def train_mlp(model, train_loader, val_loader, cfg, my_device, weights, alpha = 0.5, mixup = False, dist = 'beta', layer = 0):
     optimizer = optim.Adam(
         model.parameters(), lr=cfg.evaluation.learning_rate, amsgrad=True
     )
@@ -232,7 +232,7 @@ def train_mlp(model, train_loader, val_loader, cfg, my_device, weights, alpha = 
                 logits = model(my_X)
                 loss = loss_fn(logits, true_y)
             else:
-                logits, mixup_logits, mixup_labels = model(my_X, true_y)
+                logits, mixup_logits, mixup_labels = model(my_X, true_y, dist = dist, layer = layer)
                 loss = (1-alpha)*loss_fn(logits, true_y) + alpha*loss_fn(mixup_logits, mixup_labels)
             loss.backward()
             optimizer.step()
@@ -327,7 +327,6 @@ def init_model(cfg, my_device):
         model = SSLNET(
             output_size=cfg.data.output_size, flatten_size=1024
         )  # VGG
-
     if cfg.multi_gpu:
         model = nn.DataParallel(model, device_ids=cfg.gpu_ids)
 
@@ -396,7 +395,7 @@ def train_test_mlp(
     #pretraining['inputs'] = input_list
 
     if cfg.train_model:
-        train_mlp(model, train_loader, val_loader, cfg, my_device, weights, mixup = cfg.mixup, alpha = cfg.alpha)
+        train_mlp(model, train_loader, val_loader, cfg, my_device, weights, mixup = cfg.mixup, alpha = cfg.alpha, dist = cfg.distribution, layer = cfg.layer)
         model = init_model(cfg, my_device)
         model.load_state_dict(torch.load(cfg.model_path))
     else:
@@ -600,7 +599,7 @@ def main(cfg):
         get_original_cwd(),
         cfg.evaluation.evaluation_name + "_" + dt_string + ".log",
     )
-    cfg.model_path = os.path.join(get_original_cwd(), dt_string + "tmp.pt")
+    #cfg.model_path = os.path.join(get_original_cwd(), dt_string + "tmp.pt")
     fh = logging.FileHandler(log_dir)
     fh.setLevel(logging.INFO)
     logger.addHandler(fh)

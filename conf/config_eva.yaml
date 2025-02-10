@@ -14,6 +14,8 @@ evaluate_all_data: false
 train_model: true
 mixup: false
 alpha: 0.5
+distribution: uniform
+layer: 0
 save_outputs: false
 test_mode: true
 prefix: pre # prefix for model name

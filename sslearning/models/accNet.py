@@ -823,12 +823,12 @@ class Resnet(nn.Module):
 
         return nn.Sequential(*modules)
 
-    def forward(self, x, labels = None):
+    def forward(self, x, labels = None, dist = None, layer = None):
         if labels is not None:
             # sample one layer in which to do mixup and pairs of same labels
             with torch.no_grad():
                 # sample one layer
-                layer_idx = np.random.randint(0, len(self.feature_extractor))
+                layer_idx = np.random.randint(layer, len(self.feature_extractor)-1)
                 # get unique labels and counts
                 unique_labels, counts = torch.unique(labels, return_counts=True)
                 n_mixup = torch.sum(counts[counts > 1])
@@ -844,8 +844,10 @@ class Resnet(nn.Module):
                         idx_1[counter : counter + len(idxs)] = idxs
                         idx_2[counter : counter + len(idxs)] = new_idxs
                         counter += len(idxs)
-
-                mixup = torch.rand(len(idx_1), device = x.device)
+                if dist == 'uniform':
+                    mixup = torch.rand(len(idx_1), device = x.device)
+                elif dist == 'beta':
+                    mixup = torch.distributions.beta.Beta(10, 10).sample((len(idx_1),)).to(x.device)
                 mixup_labels = labels[idx_1]
 
             # get features
